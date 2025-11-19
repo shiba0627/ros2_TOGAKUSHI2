@@ -7,12 +7,5 @@ __pycache__/
 .vscode/
 .idea/
 venv/
-src/communication
-src/ros2_whill
-src/ros2_whill_interfaces
-src/rslidar_msg
-src/rslidar_sdk
 src/logger_pkg/logger_pkg/image_logs
-src/patlite_control
-
 
