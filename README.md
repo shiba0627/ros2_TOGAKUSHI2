@@ -8,6 +8,10 @@ ROS2humble, Ubuntu22.04LTS環境で動作確認
 # ワークスペースのルートに移動
 cd ~/ros2_TOGAKUSHI2
 
+# 必要パッケージのインストール
+sudo apt install libhidapi-dev
+sudo apt install libpcap-dev
+
 # ビルド
 colcon build
 
