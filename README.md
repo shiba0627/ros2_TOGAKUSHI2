@@ -10,6 +10,7 @@ cd ~/humble_ws
 
 # 必要パッケージのインストール
 sudo apt install libhidapi-dev
+sudo apt install libpcap-dev
 
 # ビルド
 colcon build
