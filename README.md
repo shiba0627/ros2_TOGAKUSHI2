@@ -6,7 +6,7 @@ ROS2humble, Ubuntu22.04LTS環境で動作確認
 ## セットアップ
 ```bash
 # ワークスペースのルートに移動
-cd ~/humble_ws
+cd ~/ros2_TOGAKUSHI2
 
 # ビルド
 colcon build
