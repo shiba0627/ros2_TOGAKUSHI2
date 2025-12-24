@@ -15,7 +15,7 @@ class ObstacleSaver(Node):
             10)
 
         # 保存先ディレクトリ（存在しなければ作成）
-        save_dir = 'obstacle_logs'
+        save_dir = '/home/ubuntu/Desktop/togakushi2_log/obstacle_logs'
         os.makedirs(save_dir, exist_ok=True)
 
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')

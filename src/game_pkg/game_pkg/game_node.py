@@ -67,6 +67,8 @@ class CameraSubscriberNode(Node):
                 (ptA, ptB, ptC, ptD) = r.corners#角４点
                 pts = np.array([ptA, ptB, ptC, ptD], dtype=int)
                 cv2.polylines(cv_image, [pts], True, (0, 255, 0), 2)
+                h, w = cv_image.shape[:2]
+                cv2.rectangle(cv_image, (0, 0), (w, h), (0, 255, 0), thickness=20)
 
                 tag_id = r.tag_id
 
@@ -94,14 +96,14 @@ class CameraSubscriberNode(Node):
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 4:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/和太鼓でドン.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「とう！」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「やるじゃないか！」.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 5:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/決定ボタンを押す5.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「甘い！」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「お相手しましょう」.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
@@ -113,10 +115,10 @@ class CameraSubscriberNode(Node):
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = 0
-
-            cv2.putText(cv_image, f'{self.now_state}', (0, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(cv_image, f'NEXT:{self.last_read_id+1}', (0, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-            cv2.putText(cv_image, f'SCORE:{self.total_score}', (0, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+            cv2.rectangle(img=cv_image, pt1=(15, 20), pt2=(180, 120), color=(0,0,0), thickness=-1)
+            cv2.putText(cv_image, f'{self.now_state}', (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+            cv2.putText(cv_image, f'NEXT:{self.last_read_id+1}', (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+            cv2.putText(cv_image, f'SCORE:{self.total_score}', (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
             
             #加工済ゲーム画面を配信
             try:

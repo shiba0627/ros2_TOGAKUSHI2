@@ -16,7 +16,7 @@ class JoySaver(Node):
             10)
 
         # 保存先ディレクトリ（存在しなければ作成）
-        save_dir = 'Joy_logs'
+        save_dir = '/home/ubuntu/Desktop/togakushi2_log/Joy_logs'
         os.makedirs(save_dir, exist_ok=True)
 
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')

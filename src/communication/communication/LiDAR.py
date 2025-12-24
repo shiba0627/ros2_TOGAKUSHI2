@@ -190,7 +190,7 @@ class LiDAR_Subscriber(Node):
                         cnt1 = cnt1 + 1
                         #self.detection_result.data[1] = True
 
-            if cnt1 > 20:#トネガワ追記
+            if cnt1 > 70:#トネガワ追記
                 self.detection_result.data[1] = True#トネガワ追記
 
             #----------------------------------------------------------------------------

@@ -15,7 +15,7 @@ class ImageSaver(Node):
         #self.bridge = CvBridge()
 
         # 保存先ディレクトリ（存在しなければ作成）
-        self.save_directory = 'image_logs'
+        self.save_directory = '/home/ubuntu/Desktop/togakushi2_log/image_logs'
         os.makedirs(self.save_directory, exist_ok=True)
 
         # 圧縮済み画像トピックを購読
@@ -30,8 +30,8 @@ class ImageSaver(Node):
 
         # 最後に保存した時刻を記録する変数を初期化
         self.last_save_time = self.get_clock().now()
-        # 比較用に1秒のDurationオブジェクトを作成しておく
-        self.one_second_duration = rclpy.duration.Duration(seconds=1.0)
+        # 何秒おきに写真を保存するか定義
+        self.one_second_duration = rclpy.duration.Duration(seconds=0.5)
 
     def image_callback(self, msg):
         current_time = self.get_clock().now()#現在時刻

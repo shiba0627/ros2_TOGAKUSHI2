@@ -44,7 +44,6 @@ class CameraPublisher(Node):
                 self.get_logger().warn('Frame read failed')
                 return
 
-            # OpenCV は BGR、cv_bridge に渡すときにはエンコーディング "bgr8" が一般的
             try:
                 img_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')#sensor_msgs/Imageに変換
             except Exception as e:
@@ -55,7 +54,6 @@ class CameraPublisher(Node):
             img_msg.header.stamp = self.get_clock().now().to_msg()
             img_msg.header.frame_id = 'camera_frame'
 
-            # Publish
             self.pub.publish(img_msg)
             # self.get_logger().debug('Published camera frame')
     def destroy_node(self):

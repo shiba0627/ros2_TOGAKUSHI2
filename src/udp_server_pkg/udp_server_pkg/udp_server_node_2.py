@@ -101,6 +101,7 @@ class UdpServerNode(Node):
         try:
             # 制御データを受信 (ノンブロッキング)
             data, address = self.control_sock.recvfrom(1024)
+            self.get_logger().info(f"受信：{data}")
             
             # 最後に通信したクライアントのアドレスを更新
             # これにより、画像送信先が自動的に決まる
