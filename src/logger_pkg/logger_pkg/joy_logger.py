@@ -4,7 +4,7 @@ from datetime import datetime
 import os
 from sensor_msgs.msg import Joy
 
-
+day = 20260113
 class JoySaver(Node):
     def __init__(self):
         super().__init__('Joy_saver')
@@ -16,7 +16,7 @@ class JoySaver(Node):
             10)
 
         # 保存先ディレクトリ（存在しなければ作成）
-        save_dir = '/home/ubuntu/Desktop/togakushi2_log/Joy_logs'
+        save_dir = f'/home/ubuntu/Desktop/togakushi2_log/Joy_logs'
         os.makedirs(save_dir, exist_ok=True)
 
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')

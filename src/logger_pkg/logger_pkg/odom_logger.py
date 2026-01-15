@@ -3,7 +3,7 @@ from rclpy.node import Node
 from datetime import datetime
 import os
 from nav_msgs.msg import Odometry
-
+day = 20260113
 class OdomSaver(Node):
     def __init__(self):
         super().__init__('odom_saver')
@@ -15,7 +15,7 @@ class OdomSaver(Node):
             10)
 
         # 保存先ディレクトリ
-        save_dir = '/home/ubuntu/Desktop/togakushi2_log/Odom_logs'
+        save_dir = f'/home/ubuntu/Desktop/togakushi2_log/Odom_logs'
         os.makedirs(save_dir, exist_ok=True)
 
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')

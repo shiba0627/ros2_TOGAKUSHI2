@@ -6,7 +6,7 @@ from sensor_msgs.msg import CompressedImage # 購読するメッセージ型
 #import cv2
 import os
 import rclpy.duration
-
+day = 20260113
 class ImageSaver(Node):
     def __init__(self):
         super().__init__('image_log_node')
@@ -15,7 +15,7 @@ class ImageSaver(Node):
         #self.bridge = CvBridge()
 
         # 保存先ディレクトリ（存在しなければ作成）
-        self.save_directory = '/home/ubuntu/Desktop/togakushi2_log/image_logs'
+        self.save_directory = f'/home/ubuntu/Desktop/togakushi2_log/image_logs'
         os.makedirs(self.save_directory, exist_ok=True)
 
         # 圧縮済み画像トピックを購読

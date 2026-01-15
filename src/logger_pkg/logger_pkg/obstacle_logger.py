@@ -4,6 +4,7 @@ from ros2_whill.msg import BoolMultiArray
 from datetime import datetime
 import os
 
+day = 20260113
 class ObstacleSaver(Node):
     def __init__(self):
         super().__init__('obstacle_saver')
@@ -15,7 +16,7 @@ class ObstacleSaver(Node):
             10)
 
         # 保存先ディレクトリ（存在しなければ作成）
-        save_dir = '/home/ubuntu/Desktop/togakushi2_log/obstacle_logs'
+        save_dir = f'/home/ubuntu/Desktop/togakushi2_log/obstacle_logs'
         os.makedirs(save_dir, exist_ok=True)
 
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')

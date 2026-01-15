@@ -10,6 +10,11 @@ import numpy as np
 import playsound
 import time
 from enum import Enum
+import pickle
+import os
+from datetime import datetime
+calib_dir = '/home/ubuntu/humble_ws/src/game_pkg/game_pkg/calib_files'
+save_dir = f'/home/ubuntu/Desktop/togakushi2_log/tag_logs'
 
 class Mode(str, Enum):
     USER = 'USER'
@@ -25,8 +30,16 @@ class CameraSubscriberNode(Node):
 
         # ---- パラメータ設定 ----
         self.tag_size = 0.072  # [m] 実際のタグの一辺長
-        self.fx = 520.0       # カメラの焦点距離 [pixel]（要調整）
-        self.fy = 520.0
+        self.half = self.tag_size / 2.0
+        self.object_points = np.array([
+            [-self.half,  self.half, 0],
+            [ self.half,  self.half, 0],
+            [ self.half, -self.half, 0],
+            [-self.half, -self.half, 0],
+        ], dtype=np.float32)
+        self.camera_matrix = self.load_pickle(f'{calib_dir}/cameraMatrix.pkl')
+        self.dist_coeffs = self.load_pickle(f'{calib_dir}/dist.pkl')
+        self.tag_log = []#検出ログ
 
         self.play_flag = False
         self.last_detect_time = time.time()
@@ -61,7 +74,7 @@ class CameraSubscriberNode(Node):
             results = self.detector.detect(gray)
 
             if results:
-                self.last_detect_time = time.time()
+                self.last_detect_time = time.time()#3秒待つ用
 
             for r in results:
                 (ptA, ptB, ptC, ptD) = r.corners#角４点
@@ -71,6 +84,28 @@ class CameraSubscriberNode(Node):
                 cv2.rectangle(cv_image, (0, 0), (w, h), (0, 255, 0), thickness=20)
 
                 tag_id = r.tag_id
+
+                image_points = np.array(r.corners, dtype=np.float32)
+                success, rvec, tvec = cv2.solvePnP(
+                    self.object_points,
+                    image_points,
+                    self.camera_matrix,
+                    self.dist_coeffs,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE
+                )
+                if not success:
+                    continue
+                stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+                self.tag_log.append({
+                    'time': stamp,
+                    'tag_id': int(tag_id),
+                    'tx': float(tvec[0, 0]),
+                    'ty': float(tvec[1, 0]),
+                    'tz': float(tvec[2, 0]),
+                    'rx': float(rvec[0, 0]),
+                    'ry': float(rvec[1, 0]),
+                    'rz': float(rvec[2, 0]),
+                })
 
                 # ---- 音声再生 ----
                 if self.now_state == Mode.GAME:
@@ -141,7 +176,24 @@ class CameraSubscriberNode(Node):
         if self.play_flag and (time.time() - self.last_detect_time > self.reset_delay):
             self.play_flag = False
             self.get_logger().info('3秒経過, 音声再生フラグをリセット')
-
+    
+    def load_pickle(self, path):
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+    
+    def save_logs(self):
+        os.makedirs(save_dir, exist_ok=True)
+        now_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_path = os.path.join(save_dir, f'tag_log_{now_str}.txt')
+        with open(file_path, 'w') as f:
+            f.write('# time[s] tag_id tx ty tz rx ry rz\n')
+            for i in self.tag_log:
+                f.write(
+                    f"{i['time']:.6f} {i['tag_id']} "
+                    f"{i['tx']:.4f} {i['ty']:.4f} {i['tz']:.4f} "
+                    f"{i['rx']:.6f} {i['ry']:.6f} {i['rz']:.6f}\n"
+                )
+        
 def main(args=None):
     rclpy.init(args=args)
     node = CameraSubscriberNode()
@@ -150,6 +202,7 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        node.save_logs()
         node.destroy_node()
         cv2.destroyAllWindows()
         rclpy.shutdown()
