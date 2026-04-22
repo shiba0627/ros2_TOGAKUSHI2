@@ -132,7 +132,7 @@ class LiDAR_Subscriber(Node):
                                 self.detection_result.data[2] = True # 下り階段があると判定
 
 
-                if 2 <= len(near_floor_list): # データ2つ以上無いとクラスタリングできない
+                if 200000 <= len(near_floor_list): # データ2つ以上無いとクラスタリングできない
                     filtered_obstacle_list = self.remove_outlier(near_floor_list) # エッジ効果で生じる外れ値を除去
                     
                     for x, y, z, distance, direction in filtered_obstacle_list:
@@ -190,7 +190,7 @@ class LiDAR_Subscriber(Node):
                         cnt1 = cnt1 + 1
                         #self.detection_result.data[1] = True
 
-            if cnt1 > 70:#トネガワ追記
+            if cnt1 > 80:#トネガワ追記
                 self.detection_result.data[1] = True#トネガワ追記
 
             #----------------------------------------------------------------------------
@@ -464,23 +464,15 @@ class Send_State(Node):
 
 def main():
     rclpy.init()
-    lidar_sub_node = LiDAR_Subscriber()
-    socket_obstacle_node = Send_Obstacle_Info()
-    socket_state_node = Send_State()
-    executor = rclpy.executors.MultiThreadedExecutor()
-    executor.add_node(lidar_sub_node)
-    executor.add_node(socket_obstacle_node)
-    executor.add_node(socket_state_node)
+    node = LiDAR_Subscriber()
     try:
-        executor.spin()
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        executor.shutdown()
-        lidar_sub_node.destroy_node()
-        socket_obstacle_node.destroy_node()
-        socket_state_node.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
+
     
 if __name__ == '__main__':
     main()

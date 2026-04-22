@@ -22,7 +22,7 @@ class HWencode_node(Node):
             '/camera/gameimage',
             self.image_callback,
             10)
-    def image_callback(self.msg):
+    def image_callback(self, msg):
         pass
 
 def main(args=None):

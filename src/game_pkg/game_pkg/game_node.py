@@ -110,42 +110,48 @@ class CameraSubscriberNode(Node):
                 # ---- 音声再生 ----
                 if self.now_state == Mode.GAME:
                     if not self.play_flag and tag_id == 1:
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「よろしく頼む」.mp3', block=False)
+                        #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「よろしく頼む」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/カウントダウン.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 2:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/決定ボタンを押す13.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「さあ、いくぞ！」.mp3', block=False)
+                        #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「さあ、いくぞ！」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/クリア.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 3:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/決定ボタンを押す17.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「これは強敵だな…！」.mp3', block=False)
+                        #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「これは強敵だな…！」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/カウントダウン2.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 4:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/和太鼓でドン.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「やるじゃないか！」.mp3', block=False)
+                        #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「やるじゃないか！」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/ゴール.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 5:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/決定ボタンを押す5.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「お相手しましょう」.mp3', block=False)
+                        #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「お相手しましょう」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/カウントダウン3.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
                             self.last_read_id = tag_id
                     elif not self.play_flag and tag_id == 6:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/ニワトリの鳴き声1.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「くらえ！」.mp3', block=False)
+                        #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「くらえ！」.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/ゴール2.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1
