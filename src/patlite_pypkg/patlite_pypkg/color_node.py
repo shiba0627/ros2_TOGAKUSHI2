@@ -12,6 +12,7 @@ import rclpy.time
 from . import ne_usb_example as patlite
 
 class Mode(str, Enum):
+    STOP = 'STOP'
     USER = 'USER'
     HELPER = 'HELPER'
     GAME = 'GAME'
@@ -53,6 +54,8 @@ class PatLite(Node):
         # 状態に応じたパトライト制御
         if state == Mode.USER:
             patlite.set_light(self.dev, 2, 1)#緑
+        elif state == Mode.STOP:
+            patlite.set_light(self.dev, 3, 1)#黄
         elif state == Mode.HELPER:
             patlite.set_light(self.dev, 4, 1)#青
         elif state == Mode.GAME:

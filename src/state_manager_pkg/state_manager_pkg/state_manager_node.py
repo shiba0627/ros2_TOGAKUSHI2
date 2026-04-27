@@ -1,6 +1,7 @@
 """
 ロボットの操作モード遷移を管理するノード
 定義する状態:
+  STOP      : 停止モード
   USER      : ユーザ操作モード
   HELPER    : 介助者操作モード
   GAME      : ゲームモード
@@ -16,6 +17,7 @@ from enum import Enum
 #メンバーを文字列として直接使用できる
 #Mode.USERのように呼ぶ
 class Mode(str, Enum):
+    STOP = 'STOP'
     USER = 'USER'
     HELPER = 'HELPER'
     GAME = 'GAME'
@@ -52,21 +54,26 @@ class StateManager(Node):
         try:
             #next_state = Mode(next_state_str)#受信値が未定義の場合，エラー
             engage = Engage(next_state_str)#上昇or下降
-            if self.state.value == Mode.HELPER:
+            if self.state.value == Mode.STOP:
+                if engage == Engage.FALL:
+                    next_state = Mode.HELPER
+                elif engage == Engage.RISE:
+                    next_state = Mode.STOP
+            elif self.state.value == Mode.HELPER:
                 if engage == Engage.FALL:
                     next_state = Mode.USER
                 elif engage == Engage.RISE:
-                    next_state = Mode.HELPER
-            if self.state.value == Mode.USER:
+                    next_state = Mode.STOP
+            elif self.state.value == Mode.USER:
                 if engage == Engage.FALL:
                     next_state = Mode.GAME
                 elif engage == Engage.RISE:
-                    next_state = Mode.HELPER
-            if self.state.value == Mode.GAME:
+                    next_state = Mode.STOP
+            elif self.state.value == Mode.GAME:
                 if engage == Engage.FALL:
                     next_state = Mode.GAME
                 elif engage == Engage.RISE:
-                    next_state = Mode.HELPER
+                    next_state = Mode.STOP
             self.state = next_state
             self.publish_state()
             
@@ -74,7 +81,7 @@ class StateManager(Node):
             self.get_logger().warn(f'不明な状態要求を受信: {next_state_str}')
             return
 
-        # 遷移チェック
+        # 遷移チェックはめんどくさいからとりあえずなし
         """
         if self.validate_transition(next_state):
             self.get_logger().info(f'状態遷移: {self.state.value} → {next_state.value}')

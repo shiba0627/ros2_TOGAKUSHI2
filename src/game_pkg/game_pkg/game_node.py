@@ -17,6 +17,7 @@ calib_dir = '/home/ubuntu/humble_ws/src/game_pkg/game_pkg/calib_files'
 save_dir = f'/home/ubuntu/Desktop/togakushi2_log/tag_logs'
 
 class Mode(str, Enum):
+    STOP = 'STOP'
     USER = 'USER'
     HELPER = 'HELPER'
     GAME = 'GAME'
