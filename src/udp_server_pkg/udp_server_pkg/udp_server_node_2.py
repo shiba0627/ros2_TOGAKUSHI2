@@ -1,8 +1,10 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from std_msgs.msg import Float32MultiArray
 import socket
-from ros2_whill.msg import BoolMultiArray
+#from ros2_whill.msg import BoolMultiArray
+from togakushi2_interfaces.msg import Obstacle
 from sensor_msgs.msg import Joy
 from sensor_msgs.msg import Image  # 追記: 画像メッセージ
 from cv_bridge import CvBridge, CvBridgeError # 追記: ROS/CV変換
@@ -43,10 +45,14 @@ class UdpServerNode(Node):
         self.state_pub = self.create_publisher(String, '/state_transition', 10)
         self.pub_joy = self.create_publisher(Joy,'/whill/controller/joy', 10)
 
+        # 速度変更 ゲイン
+        self.angular_gain = 1.0
+        self.linear_gain = 1.0
+        self.sub_gain = self.create_subscription(Float32MultiArray, '/speed_gain', self.gain_callback, 10)
         #---サブスクライバー--
         # 障害物情報
         self.sub_obstacle_info = self.create_subscription(
-            BoolMultiArray, 'obstacle_info', self.callback_lidar, 10)
+            Obstacle, 'obstacle_info', self.callback_lidar, 10)
         # ロボット状態
         self.state_sub = self.create_subscription(
             String, '/robot_state', self.state_update, 10)
@@ -74,7 +80,12 @@ class UdpServerNode(Node):
         # タイマーコールバックで制御ポートの受信処理
         self.timer = self.create_timer(0.02, self.receive_control_data) # 50Hz
 
-        
+    def gain_callback(self, msg: Float32MultiArray):
+        if len(msg.data) >= 2:
+            self.angular_gain = msg.data[0]
+            self.linear_gain  = msg.data[1]
+            self.get_logger().info(f'ゲイン更新: angular={self.angular_gain} linear={self.linear_gain}')
+    
     def state_update(self, msg: String):
         """/robot_stateトピックに基づいて内部の状態を更新する"""
         if self.now_state != msg.data:
@@ -123,7 +134,7 @@ class UdpServerNode(Node):
                     if len(parts) == 2:
                         angular = float(parts[0]) # 旋回
                         linear = float(parts[1])  # 前後進
-                        self.send_joy(angular, linear)
+                        self.send_joy(angular * self.angular_gain, linear * self.linear_gain)
             except (ValueError, IndexError):
                 # 解析できないメッセージは無視する
                 pass
@@ -180,7 +191,6 @@ class UdpServerNode(Node):
         try:
             self.image_sock.sendto(data_bytes, self.image_target_address)
         except Exception as e:
-            # 送信エラーは頻発する可能性があるため、エラーレベルを調整しても良い
             self.get_logger().warn(f'画像UDPパケットの送信に失敗しました: {e}')
             
     def destroy_node(self):

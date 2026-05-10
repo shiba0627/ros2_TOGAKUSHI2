@@ -22,9 +22,11 @@ class Mode(str, Enum):
     HELPER = 'HELPER'
     GAME = 'GAME'
     ERROR = 'ERROR'
+
 class Engage(str, Enum):
     FALL = 'FALL'
     RISE = 'RISE'
+    
 class StateManager(Node):
     def __init__(self):
         super().__init__('state_manager_node')

@@ -6,7 +6,8 @@ import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 #Point Cloud2を読み取るためのモジュール
-from ros2_whill.msg import BoolMultiArray
+#from ros2_whill.msg import BoolMultiArray
+from togakushi2_interfaces.msg import Obstacle
 #from ros2_whill_interfaces.msg import BoolMultiArray
 from std_msgs.msg import String
 from sklearn.cluster import KMeans
@@ -20,9 +21,9 @@ class LiDAR_Subscriber(Node):
     def __init__(self):
         super().__init__('lidar_subscriber')
         self.sub = self.create_subscription(PointCloud2, 'rslidar_points', self.callback, 10)
-        self.pub = self.create_publisher(BoolMultiArray, 'obstacle_info', 10)
+        self.pub = self.create_publisher(Obstacle, 'obstacle_info', 10)
 
-        self.detection_result = BoolMultiArray() # 検知結果
+        self.detection_result = Obstacle() # 検知結果
 
         self.detection_range_sub = self.create_subscription(Float32, 'detection_range', self.detection_range_callback, 10) # 検知範囲用のサブスクライバ
         self.detection_range = Float32()
@@ -358,7 +359,7 @@ class LiDAR_Subscriber(Node):
 class Send_Obstacle_Info(Node):
     def  __init__(self):
         super().__init__('send_obstacle_info')
-        self.sub = self.create_subscription(BoolMultiArray, 'obstacle_info', self.obstacle_info_callback, 10) 
+        self.sub = self.create_subscription(Obstacle, 'obstacle_info', self.obstacle_info_callback, 10) 
 
         self.pub_led_color = self.create_publisher(Int32, 'led_color', 10) # パトライト用パブリッシャ
         self.led_msg = Int32()

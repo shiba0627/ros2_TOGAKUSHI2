@@ -12,6 +12,8 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/togakushi2_launch.py']),
+        ('share/' + package_name + '/launch', ['launch/togakushi2_launch_v2.py']),
+        ('share/' + package_name + '/launch', ['launch/togakushi2_launch_v3.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

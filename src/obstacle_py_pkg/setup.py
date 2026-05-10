@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'slam_py_pkg'
+package_name = 'obstacle_py_pkg'
 
 setup(
     name=package_name,
@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'slam_node = slam_py_pkg.slam_node:main'
+            'obstacle_node = obstacle_py_pkg.obstacle_node:main'
         ],
     },
 )

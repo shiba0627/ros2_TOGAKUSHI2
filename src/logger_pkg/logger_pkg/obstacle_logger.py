@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
-from ros2_whill.msg import BoolMultiArray
+#from ros2_whill.msg import BoolMultiArray
+from togakushi2_interfaces.msg import Obstacle
 from datetime import datetime
 import os
 
@@ -10,7 +11,7 @@ class ObstacleSaver(Node):
         super().__init__('obstacle_saver')
 
         self.subscription = self.create_subscription(
-            BoolMultiArray,
+            Obstacle,
             '/obstacle_info',
             self.listener_callback,
             10)

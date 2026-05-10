@@ -16,5 +16,6 @@ def generate_launch_description():
         Node(package='logger_pkg', executable='joy_logger', output='screen'),
         Node(package='logger_pkg', executable='image_logger', output='screen'),
         Node(package='logger_pkg', executable='obstacle_logger', output='screen'),
-        Node(package='logger_pkg', executable='odom_logger', output='screen')
+        Node(package='logger_pkg', executable='odom_logger', output='screen'),
+        Node(package='web_ui_pkg', executable='web_ui_node', output='screen')
     ])
