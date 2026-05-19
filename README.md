@@ -18,7 +18,8 @@ cd ~/ros2_TOGAKUSHI2
 sudo apt install libhidapi-dev
 sudo apt install libpcap-dev
 sudo apt install libopencv-dev
-
+sudo apt install libpcl-dev
+sudo apt install nlohmann-json3-dev
 
 # ビルド
 colcon build

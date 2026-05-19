@@ -15,6 +15,18 @@ from togakushi2_interfaces.msg import Obstacle
 
 from flask import Flask, Response, redirect, request as flask_request
 
+# 点群配信レート上限 (Hz)。obstacle_node 側がこれより速ければ間引く。
+SCAN_RATE_HZ = 20.0
+SCAN_PERIOD  = 1.0 / SCAN_RATE_HZ
+
+# obstacle_node 側の POINTS_MAX_RANGE と一致させる
+POINTS_MAX_RANGE = 1.5
+
+# ボクセル間引きセルサイズ [m]。
+# 同じ (x,y) セルに落ちる点は1つに統合される。値を大きくすると点数↓・粒度↓。
+VOXEL_SIZE = 0.1
+
+
 # =========================
 # ROS2 Node
 # =========================
@@ -24,22 +36,20 @@ class WebGuiNode(Node):
 
         self.current_state = "UNKNOWN"
         self._near = {"front": False, "right": False, "back": False, "left": False}
-        self._far  = {
-            "front_left": False, "front": False, "front_right": False,
-            "right": False,
-            "back_right": False, "back": False, "back_left": False,
-            "left": False,
-        }
 
         self.pub = self.create_publisher(String, '/state_transition', 10)
         self.gain_pub = self.create_publisher(Float32MultiArray, '/speed_gain', 10)
         self._angular_gain = 1.0
         self._linear_gain  = 1.0
+
         self.sub = self.create_subscription(String, '/robot_state', self.state_callback, 10)
         self.obstacle_sub = self.create_subscription(
             Obstacle, '/obstacle_info', self.obstacle_callback, 10)
-        self.obstacle_far_sub = self.create_subscription(
-            Obstacle, '/obstacle_info_far', self.obstacle_far_callback, 10)
+
+        # obstacle_node が publish する直交座標点群 (JSON 文字列) をそのまま中継
+        self._next_scan_send = 0.0
+        self.points_sub = self.create_subscription(
+            String, '/obstacle_points', self.points_callback, 10)
 
     def state_callback(self, msg):
         self.current_state = msg.data
@@ -52,18 +62,40 @@ class WebGuiNode(Node):
             "front": bool(msg.data[1]), "right": bool(msg.data[3]),
             "back":  bool(msg.data[6]), "left":  bool(msg.data[9]),
         }
-        push_obstacle(self._near, self._far)
+        push_obstacle(self._near)
 
-    def obstacle_far_callback(self, msg):
-        if len(msg.data) < 8:
+    def points_callback(self, msg):
+        """obstacle_node からの JSON {"points":[{"x":..,"y":..},...]} を
+        ボクセル間引きしてコンパクト形式 {"x":[..],"y":[..]} で中継。"""
+        now = time.monotonic()
+        if now < self._next_scan_send:
             return
-        self._far = {
-            "front_left":  bool(msg.data[0]), "front":      bool(msg.data[1]),
-            "front_right": bool(msg.data[2]), "right":      bool(msg.data[3]),
-            "back_right":  bool(msg.data[4]), "back":       bool(msg.data[5]),
-            "back_left":   bool(msg.data[6]), "left":       bool(msg.data[7]),
-        }
-        push_obstacle(self._near, self._far)
+        self._next_scan_send = now + SCAN_PERIOD
+
+        try:
+            points = json.loads(msg.data).get("points", [])
+        except Exception:
+            return
+
+        # ボクセル間引き: (x,y) を VOXEL_SIZE 角のセルに量子化し、重複セルを除去
+        inv = 1.0 / VOXEL_SIZE
+        seen = set()
+        xs = []
+        ys = []
+        for p in points:
+            px = p.get("x"); py = p.get("y")
+            if px is None or py is None:
+                continue
+            key = (int(px * inv), int(py * inv))
+            if key in seen:
+                continue
+            seen.add(key)
+            xs.append(round(px, 2))
+            ys.append(round(py, 2))
+
+        # split-array + 空白なし JSON で転送量を最小化
+        payload = json.dumps({"x": xs, "y": ys}, separators=(',', ':'))
+        push_scan(payload)
 
     def send_cmd(self, text):
         msg = String()
@@ -86,20 +118,31 @@ ros_node = None
 
 clients          = []
 obstacle_clients = []
+scan_clients     = []
 stats_clients    = []
 
 
 def _push(lst, payload):
+    """共通 push。put 失敗(Full)時は最古を捨てて入れ直す。"""
     dead = []
     for q in lst:
-        try:   q.put_nowait(payload)
-        except: dead.append(q)
+        try:
+            q.put_nowait(payload)
+        except queue.Full:
+            try: q.get_nowait()
+            except queue.Empty: pass
+            try: q.put_nowait(payload)
+            except Exception: pass
+        except Exception:
+            dead.append(q)
     for q in dead:
         if q in lst: lst.remove(q)
 
-def push_state(state):        _push(clients,          state)
-def push_obstacle(near, far): _push(obstacle_clients, json.dumps({"near": near, "far": far}))
-def push_stats(stats):        _push(stats_clients,    json.dumps(stats))
+
+def push_state(state):     _push(clients,          state)
+def push_obstacle(near):   _push(obstacle_clients, json.dumps({"near": near}))
+def push_scan(payload):    _push(scan_clients,     payload)   # 既に JSON 文字列
+def push_stats(stats):     _push(stats_clients,    json.dumps(stats))
 
 
 # =========================
@@ -118,7 +161,7 @@ def top_procs(n=5):
 
 
 def collect_stats():
-    psutil.cpu_percent(percpu=True)   # 初回は基準値を作るだけ
+    psutil.cpu_percent(percpu=True)
     time.sleep(1)
     while True:
         bat   = psutil.sensors_battery()
@@ -139,7 +182,7 @@ def collect_stats():
             "bat_charge":bat.power_plugged      if bat else None,
             "bat_secsleft": (
                 int(bat.secsleft)
-                if bat and bat.secsleft >= 0   # -1=不明, -2=AC接続
+                if bat and bat.secsleft >= 0
                 else None
             ),
             "procs":     top_procs(5),
@@ -168,11 +211,21 @@ def obstacle_events():
     obstacle_clients.append(q)
     def stream():
         init = json.dumps({
-            "near": {"front":False,"right":False,"back":False,"left":False},
-            "far":  {"front_left":False,"front":False,"front_right":False,
-                     "right":False,"back_right":False,"back":False,
-                     "back_left":False,"left":False}
+            "near": {"front":False,"right":False,"back":False,"left":False}
         })
+        yield f"data: {init}\n\n"
+        while True:
+            yield f"data: {q.get()}\n\n"
+    return Response(stream(), mimetype="text/event-stream")
+
+
+@app.route("/scan_events")
+def scan_events():
+    # 有界キュー: クライアント詰まり時は古いフレームを捨ててレイテンシ蓄積を防ぐ
+    q = queue.Queue(maxsize=2)
+    scan_clients.append(q)
+    def stream():
+        init = json.dumps({"x": [], "y": []})
         yield f"data: {init}\n\n"
         while True:
             yield f"data: {q.get()}\n\n"
@@ -234,25 +287,17 @@ h1{text-align:center;font-size:18px;font-weight:700;letter-spacing:4px;
 .card{background:var(--sf);border:1px solid var(--bd);
       border-radius:18px;padding:16px;margin-bottom:12px}
 
-/* ラベル（濃く） */
 .clbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;
       color:var(--tx);font-weight:500;text-align:center;margin-bottom:10px}
 .slbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;
       color:var(--tx);font-weight:500;margin-bottom:10px}
 
-/* 状態 */
 #state{font-size:36px;font-weight:700;text-align:center;
        letter-spacing:4px;color:var(--ac);transition:color .25s}
 
-/* レーダー */
 .rw{display:flex;flex-direction:column;align-items:center;gap:10px}
 #rc{display:block;width:310px;height:310px}
-.leg{display:flex;gap:16px;font-size:11px;color:var(--tx2)}
-.li{display:flex;align-items:center;gap:5px}
-.ld{width:9px;height:9px;border-radius:50%}
-.nc{background:#ef4444}.fc{background:#f97316}
 
-/* 共通メトリクス */
 .mrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
 .big{font-size:24px;font-weight:700;color:var(--tx);line-height:1}
 .unit{font-size:12px;color:var(--tx2);margin-left:2px}
@@ -261,19 +306,16 @@ h1{text-align:center;font-size:18px;font-weight:700;letter-spacing:4px;
 .fill{height:100%;border-radius:3px;transition:width .5s ease,background .5s ease}
 .badge{font-size:11px;padding:2px 8px;border-radius:8px;font-weight:500}
 
-/* バッテリー */
 .bat-row{display:flex;align-items:center;gap:14px}
 .bat-icon{font-size:28px;flex-shrink:0}
 .bat-body{flex:1}
 
-/* コアグリッド (スマホ2列 / PC4列) */
 .cores{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:10px}
 .core-item{display:flex;flex-direction:column;gap:3px}
 .core-top{display:flex;justify-content:space-between;font-size:11px}
 .core-name{color:var(--tx);font-weight:500}
 .core-pct{color:var(--tx2)}
 
-/* プロセス一覧 */
 .procs{display:flex;flex-direction:column;gap:5px;margin-top:10px}
 .proc-row{display:flex;align-items:center;gap:8px}
 .proc-rank{font-size:11px;color:var(--tx3);width:14px;text-align:right;flex-shrink:0}
@@ -283,16 +325,32 @@ h1{text-align:center;font-size:18px;font-weight:700;letter-spacing:4px;
 .proc-bg{width:56px;height:4px;background:#1a2535;border-radius:2px;flex-shrink:0;overflow:hidden}
 .proc-fg{height:100%;border-radius:2px;background:#38bdf8;transition:width .5s}
 
-/* 速度調整 */
+/* 速度調整 (ステッパー) — flex で完全センタリング */
 .gain-rows{display:flex;flex-direction:column;gap:10px}
-.gain-row{display:grid;grid-template-columns:36px 1fr 38px 44px;align-items:center;gap:8px}
-.gain-lbl{font-size:12px;color:var(--tx);font-weight:500}
-.gain-slider{width:100%;accent-color:var(--ac);min-width:0}
-.gain-val{font-size:15px;font-weight:700;color:var(--ac);text-align:right}
-.gain-reset{font-size:10px;padding:3px 0;width:100%;border:1px solid var(--bd);
-            border-radius:6px;background:transparent;color:var(--tx2);cursor:pointer;
-            white-space:nowrap;text-align:center}
+.gain-row{display:grid;grid-template-columns:36px 1fr 64px;align-items:center;gap:10px}
+.gain-lbl{font-size:13px;color:var(--tx);font-weight:500}
+.stepper{display:flex;align-items:stretch;background:#152030;
+         border:1px solid var(--bd);border-radius:10px;overflow:hidden;height:42px}
+.stepper button{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:transparent;color:var(--tx);border:none;
+  font-size:22px;font-weight:700;line-height:1;
+  padding:0;cursor:pointer;
+  font-family:'Helvetica Neue',Arial,sans-serif;
+  transition:background .1s;
+}
+.stepper button:active{background:var(--bd)}
+.stepper button:disabled{color:var(--tx3);cursor:not-allowed}
+.stepper .val{flex:1;display:flex;align-items:center;justify-content:center;
+              font-size:18px;font-weight:700;color:var(--ac);min-width:60px}
+.gain-reset{font-size:10px;padding:0;height:42px;border:1px solid var(--bd);
+            border-radius:8px;background:transparent;color:var(--tx2);
+            cursor:pointer;white-space:nowrap}
 .gain-reset:active{background:var(--bd)}
+
 .bg{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
 .bg form{margin:0}
 button{width:100%;border:none;border-radius:13px;padding:17px 8px;
@@ -304,12 +362,11 @@ button:active{opacity:.8;transform:scale(.97)}
 footer{text-align:center;padding:12px 0 4px;color:var(--bd);
        font-size:10px;letter-spacing:2px}
 
-/* PC (640px以上) */
 @media(min-width:640px){
   .wrap{max-width:700px}
   #rc{width:480px;height:480px}
   .bg{grid-template-columns:repeat(4,1fr)}
-  button{font-size:15px;padding:14px 8px;letter-spacing:1px}
+  .bg button{font-size:15px;padding:14px 8px;letter-spacing:1px}
   .cores{grid-template-columns:repeat(4,1fr)}
 }
 </style>
@@ -338,30 +395,30 @@ footer{text-align:center;padding:12px 0 4px;color:var(--bd);
     <div class="gain-rows">
       <div class="gain-row">
         <span class="gain-lbl">旋回</span>
-        <input class="gain-slider" type="range" min="0" max="2" step="0.05"
-               value="1" id="sl-angular" oninput="onGain()">
-        <span class="gain-val" id="vl-angular">1.0</span>
+        <div class="stepper">
+          <button id="dec-angular" onclick="stepGain('angular',-0.1)">−</button>
+          <span class="val" id="vl-angular">1.0</span>
+          <button id="inc-angular" onclick="stepGain('angular', 0.1)">+</button>
+        </div>
         <button class="gain-reset" onclick="resetGain('angular')">リセット</button>
       </div>
       <div class="gain-row">
         <span class="gain-lbl">前後</span>
-        <input class="gain-slider" type="range" min="0" max="2" step="0.05"
-               value="1" id="sl-linear" oninput="onGain()">
-        <span class="gain-val" id="vl-linear">1.0</span>
+        <div class="stepper">
+          <button id="dec-linear" onclick="stepGain('linear',-0.1)">−</button>
+          <span class="val" id="vl-linear">1.0</span>
+          <button id="inc-linear" onclick="stepGain('linear', 0.1)">+</button>
+        </div>
         <button class="gain-reset" onclick="resetGain('linear')">リセット</button>
       </div>
     </div>
   </div>
 
-  <!-- 障害物レーダー -->
+  <!-- 障害物レーダー + 点群 -->
   <div class="card">
     <div class="clbl">障害物レーダー</div>
     <div class="rw">
       <canvas id="rc" width="310" height="310"></canvas>
-      <div class="leg">
-        <div class="li"><div class="ld nc"></div>近距離（内リング）</div>
-        <div class="li"><div class="ld fc"></div>遠方（外リング）</div>
-      </div>
     </div>
   </div>
 
@@ -408,29 +465,42 @@ footer{text-align:center;padding:12px 0 4px;color:var(--bd);
 </div>
 
 <script>
-// ─── 速度ゲイン ──────────────────────────────────────────
-let gainTimer = null;
-function onGain() {
-  const a = parseFloat(document.getElementById('sl-angular').value);
-  const l = parseFloat(document.getElementById('sl-linear').value);
-  document.getElementById('vl-angular').textContent = a.toFixed(2);
-  document.getElementById('vl-linear').textContent  = l.toFixed(2);
-  // 連続操作時は最後の値だけ送る（100ms デバウンス）
-  clearTimeout(gainTimer);
-  gainTimer = setTimeout(() => sendGain(a, l), 100);
+// ─── 速度ゲイン (0.1刻みボタン) ─────────────────────────
+const GAIN_MIN = 0.0, GAIN_MAX = 2.0;
+let gains = {angular: 1.0, linear: 1.0};
+
+function updateGainUI(axis) {
+  const v = gains[axis];
+  document.getElementById('vl-' + axis).textContent = v.toFixed(1);
+  document.getElementById('dec-' + axis).disabled = v <= GAIN_MIN + 1e-6;
+  document.getElementById('inc-' + axis).disabled = v >= GAIN_MAX - 1e-6;
+}
+function stepGain(axis, delta) {
+  let v = gains[axis] + delta;
+  v = Math.max(GAIN_MIN, Math.min(GAIN_MAX, v));
+  v = Math.round(v * 10) / 10;
+  if (v === gains[axis]) return;
+  gains[axis] = v;
+  updateGainUI(axis);
+  sendGain();
 }
 function resetGain(axis) {
-  document.getElementById('sl-' + axis).value = 1;
-  onGain();
+  if (gains[axis] === 1.0) return;
+  gains[axis] = 1.0;
+  updateGainUI(axis);
+  sendGain();
 }
-function sendGain(angular, linear) {
+function sendGain() {
   fetch('/set_gain', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({angular, linear})
+    body: JSON.stringify({angular: gains.angular, linear: gains.linear})
   });
 }
+updateGainUI('angular');
+updateGainUI('linear');
 
+// ─── 状態 ─────────────────────────────────────────────
 const stateEl = document.getElementById('state');
 const SC = {STOP:'#f59e0b',HELPER:'#3b82f6',USER:'#22c55e',GAME:'#8b5cf6'};
 new EventSource('/events').onmessage = e => {
@@ -438,24 +508,24 @@ new EventSource('/events').onmessage = e => {
   stateEl.style.color = SC[e.data] || '#38bdf8';
 };
 
-// ─── レーダー ─────────────────────────────────────────────
+// ─── レーダー + 点群描画 ───────────────────────────────
 const cv = document.getElementById('rc');
 const ctx = cv.getContext('2d');
-const CX=155, CY=155, R0=30, R1=72, R2=118, RL=134;
+const CX=155, CY=155, R0=20, R1=118, RL=138;
 const D = Math.PI/180, GAP = 3;
 const SECS = [
-  {lbl:'前',  fk:'front',       nk:'front', a0:-112.5,a1:-67.5, hasN:true },
-  {lbl:'右前', fk:'front_right', nk:null,    a0:-67.5, a1:-22.5, hasN:false},
-  {lbl:'右',  fk:'right',       nk:'right', a0:-22.5, a1:22.5,  hasN:true },
-  {lbl:'右後', fk:'back_right',  nk:null,    a0:22.5,  a1:67.5,  hasN:false},
-  {lbl:'後',  fk:'back',        nk:'back',  a0:67.5,  a1:112.5, hasN:true },
-  {lbl:'左後', fk:'back_left',   nk:null,    a0:112.5, a1:157.5, hasN:false},
-  {lbl:'左',  fk:'left',        nk:'left',  a0:157.5, a1:202.5, hasN:true },
-  {lbl:'左前', fk:'front_left',  nk:null,    a0:202.5, a1:247.5, hasN:false},
+  {lbl:'前', nk:'front', a0:-135, a1:-45 },
+  {lbl:'右', nk:'right', a0:-45,  a1: 45 },
+  {lbl:'後', nk:'back',  a0: 45,  a1:135 },
+  {lbl:'左', nk:'left',  a0:135,  a1:225 },
 ];
 const NEAR = {front:false,right:false,back:false,left:false};
-const FAR  = {front:false,front_right:false,right:false,back_right:false,
-              back:false,back_left:false,left:false,front_left:false};
+
+// obstacle_node の POINTS_MAX_RANGE と一致させる (m)
+const POINTS_MAX_RANGE = 1.5;
+const POINT_SCALE = (R1 - 2) / POINTS_MAX_RANGE;  // R1 が POINTS_MAX_RANGE に対応
+
+let scanX = [], scanY = [];
 
 function sec(rIn,rOut,a0d,a1d){
   ctx.beginPath();
@@ -463,41 +533,85 @@ function sec(rIn,rOut,a0d,a1d){
   ctx.arc(CX,CY,rIn, (a1d-GAP)*D,(a0d+GAP)*D,true);
   ctx.closePath();
 }
+
+function drawScan(){
+  const n = scanX.length;
+  if(!n) return;
+  ctx.fillStyle = '#00ffcc';  // light cyan
+  for(let i=0;i<n;i++){
+    // ROS: x=前, y=左   ⇒   Canvas: dx = -y*scale, dy = -x*scale
+    const dx = -scanY[i] * POINT_SCALE;
+    const dy = -scanX[i] * POINT_SCALE;
+    ctx.fillRect(CX + dx - 1.5, CY + dy - 1.5, 3, 3);
+  }
+}
+
+
+
 function draw(){
   ctx.clearRect(0,0,310,310);
-  [R1,R2].forEach(r=>{
-    ctx.beginPath();ctx.arc(CX,CY,r,0,2*Math.PI);
-    ctx.strokeStyle='#1a2535';ctx.lineWidth=0.8;
-    ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
-  });
+  // 外周点線リング (= POINTS_MAX_RANGE)
+  ctx.beginPath();ctx.arc(CX,CY,R1,0,2*Math.PI);
+  ctx.strokeStyle='#1a2535';ctx.lineWidth=0.8;
+  ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+
+  // セクター背景 (検知=赤、未検知=ダーク)
   SECS.forEach(s=>{
-    const fon=FAR[s.fk], non=s.hasN&&NEAR[s.nk];
-    sec(R1,R2,s.a0,s.a1);
-    ctx.fillStyle=fon?'#f97316':'#0f1a28';ctx.fill();
-    if(fon){sec(R1,R2,s.a0,s.a1);ctx.strokeStyle='#fb923c';ctx.lineWidth=1.5;ctx.stroke();}
-    if(s.hasN){
+    const non = NEAR[s.nk];
+    sec(R0,R1,s.a0,s.a1);
+    ctx.fillStyle = non ? '#ef4444' : '#0d1520';
+    ctx.fill();
+    if(non){
       sec(R0,R1,s.a0,s.a1);
-      ctx.fillStyle=non?'#ef4444':'#0d1520';ctx.fill();
-      if(non){sec(R0,R1,s.a0,s.a1);ctx.strokeStyle='#f87171';ctx.lineWidth=1.5;ctx.stroke();}
+      ctx.strokeStyle='#f87171';ctx.lineWidth=1.5;ctx.stroke();
     }
-    const mid=((s.a0+s.a1)/2)*D;
-    ctx.fillStyle=(fon||non)?'#e2e8f0':'#475569';
-    ctx.font=(s.hasN?'600 14px':'400 12px')+' "Helvetica Neue",Arial,sans-serif';
+  });
+
+  //半径1mの円
+  const R1M = R1 * (1.0 / POINTS_MAX_RANGE);
+  
+  ctx.beginPath();
+  ctx.arc(CX, CY, R1M, 0, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; // 白色、透明度50%
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 4]); // 2ピクセル描画、4ピクセル空ける破線
+  ctx.stroke();
+  ctx.setLineDash([]); // 他の描画に影響しないよう破線をリセット
+  // 点群(セクターの上に重ねる)
+  drawScan();
+
+  // ラベル(最前面)
+  SECS.forEach(s=>{
+    const non = NEAR[s.nk];
+    const mid = ((s.a0+s.a1)/2)*D;
+    ctx.fillStyle = non ? '#e2e8f0' : '#475569';
+    ctx.font='600 14px "Helvetica Neue",Arial,sans-serif';
     ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.fillText(s.lbl, CX+RL*Math.cos(mid), CY+RL*Math.sin(mid));
   });
-  ctx.beginPath();ctx.arc(CX,CY,R0-3,0,2*Math.PI);
-  ctx.fillStyle='#07090f';ctx.fill();
-  ctx.strokeStyle='#334155';ctx.lineWidth=1.5;ctx.stroke();
-  ctx.beginPath();ctx.moveTo(CX,CY-R0+9);ctx.lineTo(CX-4,CY-R0+17);ctx.lineTo(CX+4,CY-R0+17);
-  ctx.closePath();ctx.fillStyle='#38bdf8';ctx.fill();
-  ctx.fillStyle='#334155';ctx.font='700 8px sans-serif';
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('WHILL',CX,CY+8);
+
+  // 中央 WHILL アイコン
+  ctx.beginPath();
+  ctx.arc(CX, CY, R0 - 2, 0, 2 * Math.PI); // 少し余白を持たせる
+  ctx.fillStyle = '#0d1520'; // セクターの背景と同じダークカラー
+  ctx.fill();
+  ctx.strokeStyle = '#38bdf8'; // アクセントカラーの青で縁取り
+  ctx.lineWidth = 2; // 少し太めの縁取り
+  ctx.stroke();
 }
 draw();
+
 new EventSource('/obstacle_events').onmessage = e => {
   const d = JSON.parse(e.data);
-  Object.assign(NEAR,d.near); Object.assign(FAR,d.far); draw();
+  Object.assign(NEAR, d.near);
+  draw();
+};
+
+new EventSource('/scan_events').onmessage = e => {
+  const d = JSON.parse(e.data);
+  scanX = d.x || [];
+  scanY = d.y || [];
+  draw();
 };
 
 // ─── システム情報 SSE ────────────────────────────────────
@@ -509,7 +623,6 @@ function setBar(id,pct,colorFn){
   el.style.width = pct + '%';
   el.style.background = colorFn(pct);
 }
-
 function updateCores(cores){
   const el = document.getElementById('cores');
   el.innerHTML = cores.map((v,i) =>
@@ -524,7 +637,6 @@ function updateCores(cores){
      </div>`
   ).join('');
 }
-
 function updateProcs(procs){
   const el = document.getElementById('procs');
   if(!procs.length){ el.innerHTML=''; return; }
@@ -545,29 +657,24 @@ function updateProcs(procs){
 
 new EventSource('/stats_events').onmessage = e => {
   const d = JSON.parse(e.data);
-
-  // CPU
   document.getElementById('cpu-val').textContent = d.cpu;
   document.getElementById('cpu-sub').textContent =
     (d.cores.length ? d.cores.length : '--') + ' コア';
   setBar('cpu-bar', d.cpu, barC);
   updateCores(d.cores);
 
-  // メモリ
   document.getElementById('mem-val').textContent = d.mem;
   document.getElementById('mem-sub').textContent =
     d.mem_used + ' GB / ' + d.mem_total + ' GB';
   setBar('mem-bar', d.mem, barC);
   updateProcs(d.procs);
 
-  // バッテリー
   if(d.bat_pct !== null){
     const p = d.bat_pct, c = d.bat_charge;
     document.getElementById('bat-val').textContent  = p;
     document.getElementById('bat-icon').textContent = c ? '⚡' : p<=20 ? '🪫' : '🔋';
     document.getElementById('bat-sub').textContent  = c ? '充電中' : 'バッテリー駆動';
 
-    // 残り稼働時間
     const tEl = document.getElementById('bat-time');
     if(d.bat_secsleft !== null){
       const h = Math.floor(d.bat_secsleft / 3600);

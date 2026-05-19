@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+import os
+from glob import glob
 
 package_name = 'togakushi2_pkg'
 
@@ -11,9 +13,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/togakushi2_launch.py']),
-        ('share/' + package_name + '/launch', ['launch/togakushi2_launch_v2.py']),
-        ('share/' + package_name + '/launch', ['launch/togakushi2_launch_v3.py']),
+        (os.path.join('share', package_name, 'launch'),
+        glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

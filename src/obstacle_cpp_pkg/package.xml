@@ -12,6 +12,7 @@
   <depend>sensor_msgs</depend>
   <depend>togakushi2_interfaces</depend>
   <depend>pcl_conversions</depend>
+  <depend>nlohmann_json</depend>
   <build_depend>libpcl-all-dev</build_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

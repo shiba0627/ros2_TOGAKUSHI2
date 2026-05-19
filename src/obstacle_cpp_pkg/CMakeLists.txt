@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(obstacle_cpp_pkg)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -15,6 +18,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(togakushi2_interfaces REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 add_executable(obstacle_node src/obstacle_node.cpp)
 ament_target_dependencies(obstacle_node
