@@ -579,7 +579,32 @@ function draw(){
   ctx.setLineDash([]); // 他の描画に影響しないよう破線をリセット
   // 点群(セクターの上に重ねる)
   drawScan();
+  //追加
+  // 四角形描画
+const rectPts = [
+  {x: 1.0, y: -0.3},
+  {x: 1.0, y:  0.3},
+  {x: 0.0, y:  0.3},
+  {x: 0.0, y: -0.3},
+];
 
+ctx.beginPath();
+
+rectPts.forEach((p, i) => {
+  const px = CX - p.y * POINT_SCALE;
+  const py = CY - p.x * POINT_SCALE;
+
+  if (i === 0) {
+    ctx.moveTo(px, py);
+  } else {
+    ctx.lineTo(px, py);
+  }
+});
+
+ctx.closePath();
+ctx.strokeStyle = '#38bdf8';
+ctx.lineWidth = 2;
+ctx.stroke();
   // ラベル(最前面)
   SECS.forEach(s=>{
     const non = NEAR[s.nk];
@@ -592,7 +617,7 @@ function draw(){
 
   // 中央 WHILL アイコン
   ctx.beginPath();
-  ctx.arc(CX, CY, R0 - 2, 0, 2 * Math.PI); // 少し余白を持たせる
+  ctx.arc(CX, CY, R0 - 15, 0, 2 * Math.PI); // 少し余白を持たせる
   ctx.fillStyle = '#0d1520'; // セクターの背景と同じダークカラー
   ctx.fill();
   ctx.strokeStyle = '#38bdf8'; // アクセントカラーの青で縁取り

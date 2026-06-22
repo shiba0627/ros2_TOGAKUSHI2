@@ -101,12 +101,12 @@ private:
         count[6] += 1.0f;
       }
       // Right
-      else if (y < -WIDTH_HALF && x > 0.0f &&
+      else if (y >= -x && y < -WIDTH_HALF && x > 0.0f &&
                (x * x + y * y) <= (R_SIDE * R_SIDE)) {
         count[3] += 1.0f;
       }
       // Left
-      else if (y > WIDTH_HALF && x > 0.0f &&
+      else if (y <= x && y > WIDTH_HALF && x > 0.0f &&
                (x * x + y * y) <= (R_SIDE * R_SIDE)) {
         count[9] += 1.0f;
       }

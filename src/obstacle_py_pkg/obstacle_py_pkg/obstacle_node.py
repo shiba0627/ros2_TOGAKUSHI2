@@ -27,6 +27,7 @@ class ObstacleNode(Node):
         
         # 近距離検知パラメータ
         self.DETECT_RANGE_FRONT = 1.4  # 前方向[m]
+        self.FRONT_MIN_X = 1.0 # 前方検知の開始位置
         self.DETECT_RANGE_BACK = 0.8   # 後方向[m]
         self.WIDTH_HALF = 0.3           # 前後範囲の半幅
         self.HEIGHT_MIN = 0.1           # 地面のノイズ除去[m]
@@ -77,10 +78,10 @@ class ObstacleNode(Node):
             elif -self.WIDTH_HALF <= y <= self.WIDTH_HALF and -self.DETECT_RANGE_BACK <= x <= 0:
                 count[6] += 1
             # 右
-            elif y < -self.WIDTH_HALF and x > 0 and x**2 + y**2 <= self.R_SIDE**2:
+            elif y >= -x and y < -self.WIDTH_HALF and x > 0 and x**2 + y**2 <= self.R_SIDE**2:
                 count[3] += 1
             # 左
-            elif y > self.WIDTH_HALF and x > 0 and x**2 + y**2 <= self.R_SIDE**2:
+            elif y <= x and y > self.WIDTH_HALF and x > 0 and x**2 + y**2 <= self.R_SIDE**2:
                 count[9] += 1
         
         # 点数が閾値より多かったら障害物
