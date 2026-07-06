@@ -11,9 +11,13 @@ import psutil
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Float32MultiArray
+from std_srvs.srv import Trigger
 from togakushi2_interfaces.msg import Obstacle
 
 from flask import Flask, Response, redirect, request as flask_request
+
+# 点群保存サービス呼び出しのタイムアウト [s]
+SAVE_POINTCLOUD_TIMEOUT = 3.0
 
 # 点群配信レート上限 (Hz)。obstacle_node 側がこれより速ければ間引く。
 SCAN_RATE_HZ = 20.0
@@ -50,6 +54,41 @@ class WebGuiNode(Node):
         self._next_scan_send = 0.0
         self.points_sub = self.create_subscription(
             String, '/obstacle_points', self.points_callback, 10)
+
+        # pointcloud_saver_node の保存サービス (std_srvs/Trigger) クライアント
+        self.save_pointcloud_client = self.create_client(Trigger, 'save_pointcloud')
+
+    def call_save_pointcloud(self, timeout=SAVE_POINTCLOUD_TIMEOUT):
+        """save_pointcloud サービスを呼び出す。(success: bool, message: str) を返す。
+
+        rclpy.spin(self) は別スレッド(ros_spin)で常時実行されているため、
+        ここでは spin_until_future_complete を使わず、
+        call_async + add_done_callback + threading.Event で結果を待つ。
+        """
+        if not self.save_pointcloud_client.wait_for_service(timeout_sec=0.5):
+            return False, "save_pointcloud service not available"
+
+        done_event = threading.Event()
+        result_holder = {}
+
+        def _on_done(fut):
+            try:
+                result_holder['result'] = fut.result()
+            except Exception as exc:  # noqa: BLE001
+                result_holder['error'] = str(exc)
+            done_event.set()
+
+        future = self.save_pointcloud_client.call_async(Trigger.Request())
+        future.add_done_callback(_on_done)
+
+        if not done_event.wait(timeout=timeout):
+            return False, "Timed out waiting for save_pointcloud response"
+
+        if 'error' in result_holder:
+            return False, result_holder['error']
+
+        res = result_holder['result']
+        return res.success, res.message
 
     def state_callback(self, msg):
         self.current_state = msg.data
@@ -359,6 +398,14 @@ button{width:100%;border:none;border-radius:13px;padding:17px 8px;
 button:active{opacity:.8;transform:scale(.97)}
 .s{background:#d97706}.h{background:#2563eb}
 .u{background:#16a34a}.g{background:#7c3aed}
+
+.save-pc{background:#0891b2}
+.save-pc:disabled{background:#155e63;cursor:not-allowed;opacity:.6}
+.save-pc-status{font-size:11px;color:var(--tx2);margin-top:8px;
+                 min-height:14px;word-break:break-all;text-align:center}
+.save-pc-status.ok{color:#4ade80}
+.save-pc-status.err{color:#f87171}
+
 footer{text-align:center;padding:12px 0 4px;color:var(--bd);
        font-size:10px;letter-spacing:2px}
 
@@ -413,7 +460,12 @@ footer{text-align:center;padding:12px 0 4px;color:var(--bd);
       </div>
     </div>
   </div>
-
+<!-- 点群保存 -->
+  <div class="card">
+    <div class="clbl">点群保存</div>
+    <button id="save-pc-btn" class="save-pc" onclick="savePointcloud()">保存</button>
+    <div class="save-pc-status" id="save-pc-status"></div>
+  </div>
   <!-- 障害物レーダー + 点群 -->
   <div class="card">
     <div class="clbl">障害物レーダー</div>
@@ -421,6 +473,8 @@ footer{text-align:center;padding:12px 0 4px;color:var(--bd);
       <canvas id="rc" width="310" height="310"></canvas>
     </div>
   </div>
+
+  
 
   <!-- バッテリー -->
   <div class="card">
@@ -499,6 +553,29 @@ function sendGain() {
 }
 updateGainUI('angular');
 updateGainUI('linear');
+
+// ─── 点群保存 ─────────────────────────────────────────
+function savePointcloud() {
+  const btn = document.getElementById('save-pc-btn');
+  const statusEl = document.getElementById('save-pc-status');
+  btn.disabled = true;
+  statusEl.className = 'save-pc-status';
+  statusEl.textContent = '保存中...';
+
+  fetch('/save_pointcloud', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      statusEl.className = 'save-pc-status ' + (d.success ? 'ok' : 'err');
+      statusEl.textContent = d.success ? ('保存しました: ' + d.message) : ('失敗: ' + d.message);
+    })
+    .catch(err => {
+      statusEl.className = 'save-pc-status err';
+      statusEl.textContent = '通信エラー: ' + err;
+    })
+    .finally(() => {
+      btn.disabled = false;
+    });
+}
 
 // ─── 状態 ─────────────────────────────────────────────
 const stateEl = document.getElementById('state');
@@ -750,6 +827,12 @@ def set_gain():
     ros_node._linear_gain  = max(0.0, min(2.0, float(data.get('linear',  1.0))))
     ros_node.publish_gain()
     return {"angular": ros_node._angular_gain, "linear": ros_node._linear_gain}
+
+
+@app.route("/save_pointcloud", methods=["POST"])
+def save_pointcloud():
+    success, message = ros_node.call_save_pointcloud()
+    return {"success": success, "message": message}
 
 
 # =========================

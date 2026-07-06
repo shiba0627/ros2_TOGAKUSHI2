@@ -144,7 +144,7 @@ class CameraSubscriberNode(Node):
                     elif not self.play_flag and tag_id == 5:
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/決定ボタンを押す5.mp3', block=False)
                         #playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/「お相手しましょう」.mp3', block=False)
-                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/カウントダウン3.mp3', block=False)
+                        playsound.playsound('/home/ubuntu/humble_ws/src/game_pkg/game_pkg/data/水上のお姉さんボイスその２.mp3', block=False)
                         self.play_flag = True
                         if tag_id - self.last_read_id == 1:
                             self.total_score = self.total_score + 1

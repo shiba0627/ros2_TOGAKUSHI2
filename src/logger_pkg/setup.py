@@ -29,6 +29,7 @@ setup(
             'image_logger = logger_pkg.image_logger:main',
             'obstacle_logger = logger_pkg.obstacle_logger:main',
             'odom_logger = logger_pkg.odom_logger:main',
+            'pointcloud_save_node = logger_pkg.pointcloud_save_node:main',
         ],
     },
 )

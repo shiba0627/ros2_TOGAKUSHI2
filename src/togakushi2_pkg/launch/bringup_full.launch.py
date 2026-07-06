@@ -18,5 +18,6 @@ def generate_launch_description():
         Node(package='logger_pkg', executable='obstacle_logger', output='screen'),
         Node(package='logger_pkg', executable='odom_logger', output='screen'),
         Node(package='web_ui_pkg', executable='web_ui_node', output='screen'),
-        Node(package='obstacle_cpp_pkg', executable='obstacle_node', output='screen')
+        Node(package='obstacle_cpp_pkg', executable='obstacle_node', output='screen'),
+        Node(package='logger_pkg', executable='pointcloud_save_node', output='screen')
     ])

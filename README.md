@@ -26,7 +26,8 @@ colcon build
 source install/setup.bash
 
 # launchファイルで起動
-ros2 launch togakushi2_pkg togakushi2_launch.py
+ros2 launch togakushi2_pkg bringup_min.launch.py
+ros2 launch togakushi2_pkg bringup_full.launch.py
 ```
 
 ## コマンド備忘録
