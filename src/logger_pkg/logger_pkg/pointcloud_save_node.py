@@ -4,20 +4,36 @@ pointcloud_saver_node.py
 
 /rslidar_points (sensor_msgs/PointCloud2) を購読し、最新1フレームのみを
 バッファ保持する。ROS2サービス (std_srvs/Trigger) が呼ばれた時点で、
-その時のバッファ内容をCSVとしてディスクに保存する。
+その時のバッファ内容をNumPyバイナリ(.npz)としてディスクに保存する。
 
 想定メッセージフォーマット:
     fields: x, y, z, intensity (すべて FLOAT32, offset 0/4/8/12)
     point_step: 16 (パディングなし、4 floatが連続)
 
 保存先:
-    ~/togakushi2_data/pointclouds/YYYYMMDD/pointcloud_HHMMSS_mmm.csv
+    ~/togakushi2_data/pointclouds/YYYYMMDD/pointcloud_HHMMSS_mmm.npz
     (YYYYMMDD, HHMMSS_mmm はサービス呼び出し=保存トリガー時刻)
 
-CSV列:
-    x, y, z, intensity, stamp_sec, stamp_nanosec
-    (stamp_sec/nanosecは点群フレーム自体のheader.stamp。point-wiseの
-     timestampは元データに存在しないため、フレーム単位の値を全行に付与する)
+npz内の配列:
+    points        : (N, 4) float32  [x, y, z, intensity]
+    stamp_sec     : スカラー int64  (フレームのheader.stamp.sec)
+    stamp_nanosec : スカラー int64  (フレームのheader.stamp.nanosec)
+
+    ※ stamp はフレーム単位の値であり、point-wiseのtimestampは元データに
+      存在しないため、CSV版のように全行へ複製せずスカラーとして1つだけ
+      保持する(容量・書き込み時間ともに削減できるため)。
+
+    ※ points はfloat32のまま保存する。float64へ変換すると書き込みコスト・
+      容量が倍になるだけで元データの精度は増えない。一方でstampは
+      Unix epoch秒(約17億)でfloat32の仮数部(24bit ≈ 1677万)では
+      正確に表現できないため、int64のまま別配列として保持している。
+
+読み込み例:
+    import numpy as np
+    data = np.load("pointcloud_XXXXXX_XXX.npz")
+    points = data["points"]              # (N, 4) float32
+    stamp_sec = int(data["stamp_sec"])
+    stamp_nanosec = int(data["stamp_nanosec"])
 
 Flask GUI等からの呼び出し例:
     ros2 service call /save_pointcloud std_srvs/srv/Trigger {}
@@ -36,6 +52,8 @@ from std_srvs.srv import Trigger
 # ---- 固定設定 -----------------------------------------------------------
 POINTCLOUD_TOPIC = "/rslidar_points"
 SAVE_SERVICE_NAME = "save_pointcloud"
+START_AUTOSAVE_SERVICE = "start_pointcloud_recording"
+STOP_AUTOSAVE_SERVICE = "stop_pointcloud_recording"
 BASE_SAVE_DIR = os.path.expanduser("~/togakushi2_data/pointclouds")
 EXPECTED_POINT_STEP = 16  # x,y,z,intensity すべてfloat32、パディングなし
 POINTS_PER_ROW = 4  # x, y, z, intensity
@@ -69,13 +87,50 @@ class PointCloudSaverNode(Node):
             f"save service: '/{SAVE_SERVICE_NAME}'"
         )
 
-    # ------------------------------------------------------------------
+        # 自動保存モード
+        self._auto_save = False
+        self._timer = self.create_timer(1.0, self._timer_callback)  # 1秒周期
+        # 自動保存開始サービス
+        self._start_srv = self.create_service(
+            Trigger, START_AUTOSAVE_SERVICE, self._start_callback
+        )
+        # 自動保存停止サービス
+        self._stop_srv = self.create_service(
+            Trigger, STOP_AUTOSAVE_SERVICE, self._stop_callback
+        )
+
+    def _stop_callback(self, request, response):
+        # 自動保存停止
+        self._auto_save = False
+        response.success = True
+        response.message = "Recording stopped"
+        return response
+
+    def _start_callback(self, request, response):
+        # 自動保存開始
+        self._auto_save = True
+        response.success = True
+        response.message = "Recording started"
+        return response
+
+    def _timer_callback(self):
+        if not self._auto_save:  # Falseなら何もしない
+            return
+        if self._latest_msg is None:  # Noneなら何もしない
+            return
+
+        try:
+            filepath = self._save_current_frame(self._latest_msg)
+            # self.get_logger().info(f'auto saved:{filepath}')
+        except Exception as e:
+            self.get_logger().error(str(e))
+
     def _pointcloud_callback(self, msg: PointCloud2) -> None:
         # 最新フレームのみ保持(上書き)。過去フレームは保持しない。
         self._latest_msg = msg
 
-    # ------------------------------------------------------------------
     def _save_service_callback(self, request, response):
+        # 保存サービスのレスポンス
         if self._latest_msg is None:
             response.success = False
             response.message = "No point cloud received yet."
@@ -96,30 +151,25 @@ class PointCloudSaverNode(Node):
 
     # ------------------------------------------------------------------
     def _save_current_frame(self, msg: PointCloud2) -> str:
-        points = self._decode_pointcloud2(msg)
+        points = self._decode_pointcloud2(msg)  # (N, 4) float32, 変換なし
 
         trigger_time = datetime.now()
         date_dir = os.path.join(BASE_SAVE_DIR, trigger_time.strftime("%Y%m%d"))
         os.makedirs(date_dir, exist_ok=True)
 
-        filename = trigger_time.strftime("pointcloud_%H%M%S_%f")[:-3] + ".csv"
+        filename = trigger_time.strftime("pointcloud_%H%M%S_%f")[:-3] + ".npz"
         filepath = os.path.join(date_dir, filename)
 
-        stamp_sec = np.full((points.shape[0], 1), msg.header.stamp.sec, dtype=np.int64)
-        stamp_nanosec = np.full(
-            (points.shape[0], 1), msg.header.stamp.nanosec, dtype=np.int64
-        )
+        # スタンプはフレーム単位の値なのでスカラーとして1つだけ保持する。
+        # int64のまま保存し、CSV版のような全行への複製はしない。
+        stamp_sec = np.int64(msg.header.stamp.sec)
+        stamp_nanosec = np.int64(msg.header.stamp.nanosec)
 
-        out = np.hstack([points.astype(np.float64), stamp_sec, stamp_nanosec])
-
-        header = "x,y,z,intensity,stamp_sec,stamp_nanosec"
-        np.savetxt(
+        np.savez(
             filepath,
-            out,
-            delimiter=",",
-            header=header,
-            comments="",
-            fmt=["%.6f", "%.6f", "%.6f", "%.6f", "%d", "%d"],
+            points=points,
+            stamp_sec=stamp_sec,
+            stamp_nanosec=stamp_nanosec,
         )
 
         return filepath

@@ -55,18 +55,27 @@ class WebGuiNode(Node):
         self.points_sub = self.create_subscription(
             String, '/obstacle_points', self.points_callback, 10)
 
-        # pointcloud_saver_node の保存サービス (std_srvs/Trigger) クライアント
-        self.save_pointcloud_client = self.create_client(Trigger, 'save_pointcloud')
+        # pointcloud_saver_node のサービス (すべて std_srvs/Trigger) クライアント
+        self.save_pointcloud_client  = self.create_client(Trigger, 'save_pointcloud')
+        self.start_autosave_client   = self.create_client(Trigger, 'start_pointcloud_recording')
+        self.stop_autosave_client    = self.create_client(Trigger, 'stop_pointcloud_recording')
 
-    def call_save_pointcloud(self, timeout=SAVE_POINTCLOUD_TIMEOUT):
-        """save_pointcloud サービスを呼び出す。(success: bool, message: str) を返す。
+        # UI表示用の自動保存中フラグ。
+        # 注意: これはこのFlaskプロセスがstart/stopを呼んだ結果を保持するだけの
+        # ローカルな表示用フラグであり、pointcloud_saver_node側の実際の状態を
+        # 問い合わせるサービスは無いため、ページを再読み込みすると(実際は
+        # 記録中でも)未記録表示にリセットされる点に留意すること。
+        self.autosave_active = False
+
+    def _call_trigger(self, client, service_name, timeout=SAVE_POINTCLOUD_TIMEOUT):
+        """std_srvs/Trigger サービスの共通呼び出し処理。(success, message) を返す。
 
         rclpy.spin(self) は別スレッド(ros_spin)で常時実行されているため、
         ここでは spin_until_future_complete を使わず、
         call_async + add_done_callback + threading.Event で結果を待つ。
         """
-        if not self.save_pointcloud_client.wait_for_service(timeout_sec=0.5):
-            return False, "save_pointcloud service not available"
+        if not client.wait_for_service(timeout_sec=0.5):
+            return False, f"{service_name} service not available"
 
         done_event = threading.Event()
         result_holder = {}
@@ -78,17 +87,37 @@ class WebGuiNode(Node):
                 result_holder['error'] = str(exc)
             done_event.set()
 
-        future = self.save_pointcloud_client.call_async(Trigger.Request())
+        future = client.call_async(Trigger.Request())
         future.add_done_callback(_on_done)
 
         if not done_event.wait(timeout=timeout):
-            return False, "Timed out waiting for save_pointcloud response"
+            return False, f"Timed out waiting for {service_name} response"
 
         if 'error' in result_holder:
             return False, result_holder['error']
 
         res = result_holder['result']
         return res.success, res.message
+
+    def call_save_pointcloud(self, timeout=SAVE_POINTCLOUD_TIMEOUT):
+        """save_pointcloud サービスを呼び出す。(success: bool, message: str) を返す。"""
+        return self._call_trigger(self.save_pointcloud_client, 'save_pointcloud', timeout)
+
+    def call_start_autosave(self, timeout=SAVE_POINTCLOUD_TIMEOUT):
+        """start_pointcloud_recording サービスを呼び出す。(success, message) を返す。"""
+        success, message = self._call_trigger(
+            self.start_autosave_client, 'start_pointcloud_recording', timeout)
+        if success:
+            self.autosave_active = True
+        return success, message
+
+    def call_stop_autosave(self, timeout=SAVE_POINTCLOUD_TIMEOUT):
+        """stop_pointcloud_recording サービスを呼び出す。(success, message) を返す。"""
+        success, message = self._call_trigger(
+            self.stop_autosave_client, 'stop_pointcloud_recording', timeout)
+        if success:
+            self.autosave_active = False
+        return success, message
 
     def state_callback(self, msg):
         self.current_state = msg.data
@@ -401,10 +430,15 @@ button:active{opacity:.8;transform:scale(.97)}
 
 .save-pc{background:#0891b2}
 .save-pc:disabled{background:#155e63;cursor:not-allowed;opacity:.6}
+.pc-btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.save-pc.stop{background:#334155}
+.save-pc.stop.active{background:#dc2626}
+.save-pc.stop:disabled{background:#1e293b;cursor:not-allowed;opacity:.6}
 .save-pc-status{font-size:11px;color:var(--tx2);margin-top:8px;
                  min-height:14px;word-break:break-all;text-align:center}
 .save-pc-status.ok{color:#4ade80}
 .save-pc-status.err{color:#f87171}
+.pc-gap{height:10px}
 
 footer{text-align:center;padding:12px 0 4px;color:var(--bd);
        font-size:10px;letter-spacing:2px}
@@ -460,12 +494,22 @@ footer{text-align:center;padding:12px 0 4px;color:var(--bd);
       </div>
     </div>
   </div>
-<!-- 点群保存 -->
+
+  <!-- 点群保存 -->
   <div class="card">
     <div class="clbl">点群保存</div>
     <button id="save-pc-btn" class="save-pc" onclick="savePointcloud()">保存</button>
     <div class="save-pc-status" id="save-pc-status"></div>
+
+    <div class="pc-gap"></div>
+
+    <div class="pc-btn-row">
+      <button id="autosave-start-btn" class="save-pc" onclick="startAutosave()">自動保存 開始</button>
+      <button id="autosave-stop-btn" class="save-pc stop" onclick="stopAutosave()" disabled>自動保存 終了</button>
+    </div>
+    <div class="save-pc-status" id="autosave-status"></div>
   </div>
+
   <!-- 障害物レーダー + 点群 -->
   <div class="card">
     <div class="clbl">障害物レーダー</div>
@@ -554,7 +598,7 @@ function sendGain() {
 updateGainUI('angular');
 updateGainUI('linear');
 
-// ─── 点群保存 ─────────────────────────────────────────
+// ─── 点群保存(単発) ───────────────────────────────────
 function savePointcloud() {
   const btn = document.getElementById('save-pc-btn');
   const statusEl = document.getElementById('save-pc-status');
@@ -574,6 +618,64 @@ function savePointcloud() {
     })
     .finally(() => {
       btn.disabled = false;
+    });
+}
+
+// ─── 点群自動保存(開始・終了は独立したボタン) ───────────
+// 注意: このフラグはページ内でのみ保持される表示用の状態。
+// pointcloud_saver_node側の実際の記録状態を問い合わせるサービスは
+// 無いため、ページ再読み込み後は「停止中」表示に戻る(実際に記録が
+// 続いていても表示上はリセットされる)。
+let autosaveActive = false;
+
+function setAutosaveUI(active) {
+  autosaveActive = active;
+  const startBtn = document.getElementById('autosave-start-btn');
+  const stopBtn  = document.getElementById('autosave-stop-btn');
+  startBtn.disabled = active;
+  stopBtn.disabled  = !active;
+  stopBtn.classList.toggle('active', active);
+}
+
+function startAutosave() {
+  const startBtn = document.getElementById('autosave-start-btn');
+  const statusEl = document.getElementById('autosave-status');
+  startBtn.disabled = true;
+  statusEl.className = 'save-pc-status';
+  statusEl.textContent = '開始中...';
+
+  fetch('/start_pointcloud_recording', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      statusEl.className = 'save-pc-status ' + (d.success ? 'ok' : 'err');
+      statusEl.textContent = d.success ? '記録中です' : ('失敗: ' + d.message);
+      setAutosaveUI(d.active);
+    })
+    .catch(err => {
+      statusEl.className = 'save-pc-status err';
+      statusEl.textContent = '通信エラー: ' + err;
+      setAutosaveUI(autosaveActive);
+    });
+}
+
+function stopAutosave() {
+  const stopBtn = document.getElementById('autosave-stop-btn');
+  const statusEl = document.getElementById('autosave-status');
+  stopBtn.disabled = true;
+  statusEl.className = 'save-pc-status';
+  statusEl.textContent = '停止中...';
+
+  fetch('/stop_pointcloud_recording', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      statusEl.className = 'save-pc-status ' + (d.success ? 'ok' : 'err');
+      statusEl.textContent = d.success ? '停止しました' : ('失敗: ' + d.message);
+      setAutosaveUI(d.active);
+    })
+    .catch(err => {
+      statusEl.className = 'save-pc-status err';
+      statusEl.textContent = '通信エラー: ' + err;
+      setAutosaveUI(autosaveActive);
     });
 }
 
@@ -833,6 +935,18 @@ def set_gain():
 def save_pointcloud():
     success, message = ros_node.call_save_pointcloud()
     return {"success": success, "message": message}
+
+
+@app.route("/start_pointcloud_recording", methods=["POST"])
+def start_pointcloud_recording():
+    success, message = ros_node.call_start_autosave()
+    return {"success": success, "message": message, "active": ros_node.autosave_active}
+
+
+@app.route("/stop_pointcloud_recording", methods=["POST"])
+def stop_pointcloud_recording():
+    success, message = ros_node.call_stop_autosave()
+    return {"success": success, "message": message, "active": ros_node.autosave_active}
 
 
 # =========================
