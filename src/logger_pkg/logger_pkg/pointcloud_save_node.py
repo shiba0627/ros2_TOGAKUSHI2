@@ -11,7 +11,7 @@ pointcloud_saver_node.py
     point_step: 16 (パディングなし、4 floatが連続)
 
 保存先:
-    ~/togakushi2_data/pointclouds/YYYYMMDD/pointcloud_HHMMSS_mmm.npz
+    /home/ubuntu/humble_ws/src/logger_pkg/logger_pkg/log_data/pointclauds/YYYYMMDD/pointcloud_HHMMSS_mmm.npz
     (YYYYMMDD, HHMMSS_mmm はサービス呼び出し=保存トリガー時刻)
 
 npz内の配列:
@@ -54,7 +54,8 @@ POINTCLOUD_TOPIC = "/rslidar_points"
 SAVE_SERVICE_NAME = "save_pointcloud"
 START_AUTOSAVE_SERVICE = "start_pointcloud_recording"
 STOP_AUTOSAVE_SERVICE = "stop_pointcloud_recording"
-BASE_SAVE_DIR = os.path.expanduser("~/togakushi2_data/pointclouds")
+# BASE_SAVE_DIR = os.path.expanduser("~/togakushi2_data/pointclouds")
+BASE_SAVE_DIR = os.path.expanduser("/home/ubuntu/humble_ws/src/logger_pkg/logger_pkg/log_data/pointclauds")
 EXPECTED_POINT_STEP = 16  # x,y,z,intensity すべてfloat32、パディングなし
 POINTS_PER_ROW = 4  # x, y, z, intensity
 

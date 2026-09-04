@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 2HzでWEBカメラの画像を保存
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage # 購読するメッセージ型
@@ -6,7 +7,7 @@ from sensor_msgs.msg import CompressedImage # 購読するメッセージ型
 #import cv2
 import os
 import rclpy.duration
-day = 20260113
+
 class ImageSaver(Node):
     def __init__(self):
         super().__init__('image_log_node')
@@ -15,7 +16,8 @@ class ImageSaver(Node):
         #self.bridge = CvBridge()
 
         # 保存先ディレクトリ（存在しなければ作成）
-        self.save_directory = f'/home/ubuntu/Desktop/togakushi2_log/image_logs'
+        # self.save_directory = f'/home/ubuntu/Desktop/togakushi2_log/image_logs'
+        self.save_directory = f'/home/ubuntu/humble_ws/src/logger_pkg/logger_pkg/log_data/image_logs'
         os.makedirs(self.save_directory, exist_ok=True)
 
         # 圧縮済み画像トピックを購読
@@ -36,7 +38,7 @@ class ImageSaver(Node):
     def image_callback(self, msg):
         current_time = self.get_clock().now()#現在時刻
         duration_since_last_save = current_time - self.last_save_time#差を計算
-        # 経過時間が1秒未満なら、何もせずに関数を終了
+        # 経過時間が1秒未満なら、何もせずに終了
         if duration_since_last_save < self.one_second_duration:
             # self.get_logger().debug('Skipping save (less than 1 sec)') # デバッグ用
             return
@@ -49,8 +51,8 @@ class ImageSaver(Node):
         filepath = os.path.join(self.save_directory, filename)
 
         try:
-            # 2. msg.data には圧縮済みのJPEGデータ(bytes)がそのまま入っている
-            #    これを 'wb' (write binary) モードで書き出すだけ
+            # msg.data には圧縮済みのJPEGデータ(bytes)がそのまま入っている
+            # これを 'wb' (write binary) モードで書き出すだけ
             with open(filepath, 'wb') as f:
                 f.write(msg.data)
             

@@ -15,7 +15,8 @@ class OdomSaver(Node):
             10)
 
         # 保存先ディレクトリ
-        save_dir = f'/home/ubuntu/Desktop/togakushi2_log/Odom_logs'
+        # save_dir = f'/home/ubuntu/Desktop/togakushi2_log/Odom_logs'
+        save_dir = f'/home/ubuntu/humble_ws/src/logger_pkg/logger_pkg/log_data/Odom_logs'
         os.makedirs(save_dir, exist_ok=True)
 
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')

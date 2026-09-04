@@ -7,7 +7,4 @@ __pycache__/
 .vscode/
 .idea/
 venv/
-src/logger_pkg/logger_pkg/image_logs
-Joy_logs/
-Odom_logs/
-obstacle_logs/
+src/logger_pkg/logger_pkg/log_data/
