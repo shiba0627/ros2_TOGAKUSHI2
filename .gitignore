@@ -8,3 +8,4 @@ __pycache__/
 .idea/
 venv/
 src/logger_pkg/logger_pkg/log_data/
+src/mpc_navigation_pypkg/mpc_navigation_pypkg/output/
